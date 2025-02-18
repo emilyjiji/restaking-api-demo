@@ -1,12 +1,13 @@
-import { signTX } from "./sign.js";
+import { signAndBroadcast } from "./sign.js";
 import axios from "axios";
 import { readFileSync } from "fs";
+import { v4 as uuidv4 } from "uuid";
 
 // Constants
 const config = JSON.parse(readFileSync("./config.json", "utf-8"));
 const API_BASE_URL = config.url;
 const AUTH_TOKEN = config.token;
-const STAKER_ADDRESS = "0x338EF19fA2eC0fc4d1277B1307a613fA1FBbc0cb";
+const STAKER_ADDRESS = config.stakerAddress;
 
 // Authorization headers helper
 function getAuthorizationHeaders() {
@@ -17,101 +18,153 @@ function getAuthorizationHeaders() {
   };
 }
 
-// step1: Create Eigen Pod Address
-
-async function initiateEigenPodRequest() {
-  const url = `${API_BASE_URL}/eigenlayer/tx/create-pod`;
-  const data = {};
-
+async function createEigenPod() {
+  const url = `${API_BASE_URL}eth/staking/eigenlayer/tx/create-pod`;
   try {
-    const response = await axios.post(url, data, {
-      headers: getAuthorizationHeaders(),
-    });
-    console.log("Unsigned Transaction Response:", response.data);
-    return response.data.result.serializeTx;
+    const response = await axios.post(
+      url,
+      {},
+      { headers: getAuthorizationHeaders() }
+    );
+    console.log("EigenPod Creation Response:", response.data);
+    return response.data.result;
   } catch (error) {
     console.error(
-      "Error initiating staking request:",
-      error.response ? error.response.data : error.message
+      "Error creating EigenPod:",
+      error.response?.data || error.message
     );
     throw error;
   }
 }
 
-async function initiateCreateRestakeRequest() {
-  const url = `${API_BASE_URL}/eigenlayer/tx/create-pod`;
+async function createRestakeRequest() {
+  const uuid = uuidv4();
+  const url = `${API_BASE_URL}eth/staking/direct/nodes-request/create`;
   const data = {
-    id: "761db76f-d6d8-4da8-8cc8-2c87ef56c1a9",
+    id: uuid,
     type: "RESTAKING",
     validatorsCount: 1,
     eigenPodOwnerAddress: STAKER_ADDRESS,
     feeRecipientAddress: STAKER_ADDRESS,
     controllerAddress: STAKER_ADDRESS,
-    nodesOptions: {
-      location: "any",
-      relaysSet: null,
-    },
+    nodesOptions: { location: "any", relaysSet: null },
   };
-
   try {
     const response = await axios.post(url, data, {
       headers: getAuthorizationHeaders(),
     });
-    console.log("Unsigned Transaction Response:", response.data);
+    console.log("Restake Request Response:", response.data);
+    return { uuid, result: response.data.result };
+  } catch (error) {
+    console.error(
+      "Error initiating restake request:",
+      error.response?.data || error.message
+    );
+    throw error;
+  }
+}
+
+async function getRestakeStatusWithRetry(uuid, retries = 3, delay = 3000) {
+  const url = `${API_BASE_URL}eth/staking/direct/nodes-request/status/${uuid}`;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await axios.get(url, {
+        headers: getAuthorizationHeaders(),
+      });
+      console.log(
+        `Attempt ${attempt}: Restake Status Response:`,
+        response.data
+      );
+      if (response.data.result.status !== "processing") {
+        return response.data.result;
+      }
+    } catch (error) {
+      console.error(
+        "Error fetching restake status:",
+        error.response?.data || error.message
+      );
+      throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+  throw new Error("Restake status is still 'processing' after maximum retries");
+}
+
+async function createDepositTx(result) {
+  const url = `${API_BASE_URL}eth/staking/direct/tx/deposit`;
+  const depositData = result.depositData[0];
+  const data = {
+    depositData: [
+      {
+        pubkey: depositData.pubkey,
+        signature: depositData.signature,
+        depositDataRoot: depositData.depositDataRoot,
+      },
+    ],
+    withdrawalAddress: result.eigenPodAddress,
+  };
+  try {
+    const response = await axios.post(url, data, {
+      headers: getAuthorizationHeaders(),
+    });
+    console.log("Deposit Transaction Response:", response.data);
     return response.data.result;
   } catch (error) {
     console.error(
-      "Error initiating staking request:",
-      error.response ? error.response.data : error.message
+      "Error creating deposit transaction:",
+      error.response?.data || error.message
     );
     throw error;
   }
 }
 
-async function broadcastTx(txHex) {
-  const url = `${API_BASE_URL}/transaction/send`;
-  const data = {
-    transactionHex: txHex,
-    maxFee: 1000000,
-  };
-
-  try {
-    const response = await axios.post(url, data, {
-      headers: getAuthorizationHeaders(),
-    });
-    console.log("Tx Hash:", response.data.result.transactionHash);
-    return response.data.result.transactionHash;
-  } catch (error) {
-    console.error(
-      "Error broadcasting transaction:",
-      error.response ? error.response.data : error.message
-    );
-    throw error;
-  }
-}
-
-// Main function to handle request, signing, and broadcasting
 (async function main() {
   try {
-    // step 2: Create Stake Transaction
-    const txHex = await initiateRequest();
+    console.log("Starting staking process...");
 
-    // step 3: Sign and Broadcast Transaction
-    if (txHex && txHex.stakeTransactionHex) {
-      const signedTx = signTX(txHex.stakeTransactionHex);
-      console.log("Final Signed Transaction:", signedTx);
-
-      // if (signedTx) {
-      //   const txHash = await broadcastTx(signedTx); // Await broadcastTx
-      //   console.log("Broadcasted Transaction Hash:", txHash);
-      // }
-    } else {
-      console.error("Error: stakeTransactionHex not found in response");
+    // Ensure this runs only once
+    if (global.hasRun) {
+      console.log("Main function already executed. Exiting...");
+      return;
     }
-  } catch (error) {
-    console.error(
-      "Failed to initiate, sign, and broadcast transaction:",
-      error.message
+    global.hasRun = true;
+
+    console.log("Step 1: Creating EigenPod...");
+    const podResponse = await createEigenPod();
+    console.log("Pod Created:", podResponse.serializeTx);
+
+    // ✅ Sign and Broadcast EigenPod Transaction
+    console.log("Signing and broadcasting EigenPod transaction...");
+    const signedPodTx = await signAndBroadcast(
+      podResponse.serializeTx,
+      podResponse.gasLimit,
+      podResponse.maxFeePerGas,
+      podResponse.maxPriorityFeePerGas,
+      podResponse.value
     );
+
+    console.log("EigenPod Transaction Broadcasted:", signedPodTx.hash);
+
+    console.log("Step 2: Creating Restake Request...");
+    const { uuid, result: restakeRequest } = await createRestakeRequest();
+
+    console.log("Step 3: Checking Restake Status...");
+    const restakeStatus = await getRestakeStatusWithRetry(uuid);
+
+    console.log("Step 4: Creating Deposit Transaction...");
+    const depositTxResponse = await createDepositTx(restakeStatus);
+
+    console.log("Step 5: Signing & Broadcasting Deposit Transaction...");
+    const signedDepositTx = await signAndBroadcast(
+      depositTxResponse.serializeTx,
+      depositTxResponse.gasLimit,
+      depositTxResponse.maxFeePerGas,
+      depositTxResponse.maxPriorityFeePerGas,
+      depositTxResponse.value
+    );
+
+    console.log("Deposit Transaction Broadcasted:", signedDepositTx.hash);
+  } catch (error) {
+    console.error("Staking process failed:", error.message);
   }
 })();
