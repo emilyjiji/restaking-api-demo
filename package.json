@@ -1,0 +1,9 @@
+{
+  "name": "restaking_api_sign",
+  "type": "module",
+  "version": "1.0.0",
+  "main": "index.js",
+  "author": "alessandromaci <alessandro.maci@p2p.org>",
+  "license": "MIT",
+  "dependencies": {}
+}
