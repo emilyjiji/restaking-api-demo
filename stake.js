@@ -2,6 +2,7 @@ import { signAndBroadcast } from "./sign.js";
 import axios from "axios";
 import { readFileSync } from "fs";
 import { v4 as uuidv4 } from "uuid";
+import { setTimeout as wait } from "timers/promises";
 
 // Constants
 const config = JSON.parse(readFileSync("./config.json", "utf-8"));
@@ -154,7 +155,10 @@ async function createDepositTx(result) {
     console.log("Step 4: Creating Deposit Transaction...");
     const depositTxResponse = await createDepositTx(restakeStatus);
 
-    console.log("Step 5: Signing & Broadcasting Deposit Transaction...");
+    console.log("Step 5: Wait 30 seconds for the first transaction to complete...");
+    await wait(30000);
+
+    console.log("Step 6: Signing & Broadcasting Deposit Transaction...");
     const signedDepositTx = await signAndBroadcast(
       depositTxResponse.serializeTx,
       depositTxResponse.gasLimit,
