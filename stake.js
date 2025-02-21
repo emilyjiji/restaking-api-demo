@@ -19,6 +19,8 @@ function getAuthorizationHeaders() {
   };
 }
 
+let pubkey;
+
 async function createEigenPod() {
   const url = `${API_BASE_URL}eth/staking/eigenlayer/tx/create-pod`;
   try {
@@ -109,6 +111,7 @@ async function createDepositTx(result) {
       headers: getAuthorizationHeaders(),
     });
     console.log("Deposit Transaction Response:", response.data);
+    pubkey = depositData.pubkey;
     return response.data.result;
   } catch (error) {
     console.error(
@@ -168,6 +171,10 @@ async function createDepositTx(result) {
     );
 
     console.log("Deposit Transaction Broadcasted:", signedDepositTx.hash);
+    // Log the BeaconChain link for the validator
+    console.log(
+      `\n🔍 View your validator on BeaconChain: https://holesky.beaconcha.in/validator/${pubkey}`
+    );
   } catch (error) {
     console.error("Staking process failed:", error.message);
   }
