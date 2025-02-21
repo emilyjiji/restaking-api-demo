@@ -5,7 +5,7 @@
 ### Install Dependencies
 
 ```shell
-yarn install
+npm install
 ```
 
 ### Set Configuration
