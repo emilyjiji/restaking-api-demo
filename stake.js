@@ -1,11 +1,19 @@
 import { signAndBroadcast } from "./sign.js";
 import axios from "axios";
-import { readFileSync } from "fs";
 import { v4 as uuidv4 } from "uuid";
 import { setTimeout as wait } from "timers/promises";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+import { ethers } from "ethers";
 
-// Constants
-const config = JSON.parse(readFileSync("./config.json", "utf-8"));
+// Get the directory of the current module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Load config.json (one directory above)
+const configPath = join(__dirname, "./config.json");
+const config = JSON.parse(readFileSync(configPath, "utf8"));
 const API_BASE_URL = config.url;
 const AUTH_TOKEN = config.token;
 const STAKER_ADDRESS = config.stakerAddress;
@@ -122,13 +130,23 @@ async function createDepositTx(result) {
   }
 }
 
-(async function main() {
-  try {
-    console.log("Starting staking process...");
 
-    // Ensure this runs only once
+export async function stake(provider = new ethers.providers.JsonRpcProvider()) {
+  try {
+    console.log("Checking wallet balance...");
+
+    // Check wallet balance
+    const balance = await provider.getBalance("your_wallet_address_here");
+    if (balance.lt(ethers.utils.parseEther("32"))) {
+      console.log("Insufficient balance to stake.");
+      return;
+    }
+
+    console.log("Sufficient balance, proceeding with staking...");
+
+    // Ensure staking runs only once
     if (global.hasRun) {
-      console.log("Main function already executed. Exiting...");
+      console.log("Staking process already executed. Exiting...");
       return;
     }
     global.hasRun = true;
@@ -146,7 +164,6 @@ async function createDepositTx(result) {
       podResponse.maxPriorityFeePerGas,
       podResponse.value
     );
-
     console.log("EigenPod Transaction Broadcasted:", signedPodTx.hash);
 
     console.log("Step 2: Creating Restake Request...");
@@ -171,11 +188,12 @@ async function createDepositTx(result) {
     );
 
     console.log("Deposit Transaction Broadcasted:", signedDepositTx.hash);
+
     // Log the BeaconChain link for the validator
     console.log(
-      `\n🔍 View your validator on BeaconChain: https://holesky.beaconcha.in/validator/${pubkey}`
+      `\n🔍 View your validator on BeaconChain: https://holesky.beaconcha.in/validator/${restakeStatus.pubkey}`
     );
   } catch (error) {
     console.error("Staking process failed:", error.message);
   }
-})();
+}
