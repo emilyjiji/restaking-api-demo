@@ -136,8 +136,8 @@ export async function stake(provider = new ethers.providers.JsonRpcProvider()) {
     console.log("Checking wallet balance...");
 
     // Check wallet balance
-    const balance = await provider.getBalance("your_wallet_address_here");
-    if (balance.lt(ethers.utils.parseEther("32"))) {
+    const balance = await provider.getBalance(STAKER_ADDRESS);
+    if (balance < ethers.parseEther("32")) {
       console.log("Insufficient balance to stake.");
       return;
     }

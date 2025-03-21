@@ -1,5 +1,15 @@
 import { ethers } from "ethers";
 import { readFileSync } from "fs";
+import { JsonRpcProvider } from 'ethers';
+
+// Connect to the Ethereum network
+const provider = new JsonRpcProvider("https://eth-holesky.g.alchemy.com/v2/ry_w0ACMkBU7OLdg9u233mwPr41eRvBP");
+
+// Get block by number
+const blockNumber = "latest";
+const block = await provider.getBlock(blockNumber);
+
+console.log(block);
 
 async function signAndBroadcast(
   txHex,

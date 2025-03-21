@@ -19,6 +19,7 @@ describe("stake function", () => {
     });
 
     it("should call stake() when wallet balance is >= 32 ETH", async () => {
+        // Return a BigNumber object for the balance
         providerMock.getBalance.resolves(ethers.parseEther("32"));
 
         await stake(providerMock);
@@ -27,7 +28,9 @@ describe("stake function", () => {
     });
 
     it("should not call stake() when wallet balance is < 32 ETH", async () => {
+        // Return a BigNumber object for the balance
         providerMock.getBalance.resolves(ethers.parseEther("31"));
+
         await stake(providerMock);
 
         expect(providerMock.getBalance.calledOnce).to.be.true;
